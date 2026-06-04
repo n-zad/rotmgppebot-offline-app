@@ -36,12 +36,12 @@ jobs:
 
       - name: Update fork main from upstream main
         run: |
-          git checkout main
+          git checkout -B main origin/main
           git merge --ff-only upstream/main
           git push origin main
 
       - name: Merge main into offline app feature branch
         run: |
-          git checkout offline-app
+          git checkout -B offline-app origin/offline-app
           git merge --no-ff main -m "Merge upstream updates from main"
           git push origin offline-app
