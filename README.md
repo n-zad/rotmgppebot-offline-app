@@ -1,3 +1,7 @@
+> [!NOTE]
+> This fork adds an offline app to ROTMG PPE Discord Bot that allows for manual entry of loot without Discord or sniffer/screenshots.  
+> See [`offline_app/README.md`](./offline_app/README.md).
+
 # 🧙 ROTMG PPE Discord Bot
 
 A comprehensive Discord bot for managing competitions and more in Realm of the Mad God. You can track loot, complete quests, set points for items, and maintain a variety of leaderboards.
