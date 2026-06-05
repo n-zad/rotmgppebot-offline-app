@@ -1,5 +1,11 @@
 name: Sync upstream into fork branches
 
+# Sync strategy:
+# - origin/main mirrors upstream/main
+# - origin/offline-app is this fork's default branch
+# - fast-forward origin/main from upstream/main
+# - merge the updated main branch into origin/offline-manual-entry.
+
 on:
   workflow_dispatch:
   schedule:
