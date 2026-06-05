@@ -19,11 +19,20 @@ def main() -> int:
 
     from app.config.logging_setup import setup_logging
     from app.config.settings import load_config
-    from app.paths import app_dir, ensure_app_dirs
+    from app.paths import app_dir, ensure_app_dirs, validate_repo_layout
     from app.storage.player_store import PlayerStore
     from app.ui.main_window import run_app
 
     ensure_app_dirs()
+
+    repo_errors = validate_repo_layout()
+    if repo_errors:
+        message = (
+            "Repository layout is incomplete. Run from offline_app/ inside a full "
+            "repository checkout.\n" + "\n".join(f"  - {err}" for err in repo_errors)
+        )
+        print(message, file=sys.stderr)
+        return 1
 
     try:
         config = load_config()

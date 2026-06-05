@@ -13,12 +13,41 @@ if str(APP_ROOT) not in sys.path:
     sys.path.insert(0, str(APP_ROOT))
 
 from app.config.settings import AppConfig, _config_from_raw, normalize_loot_table_display_scale
+from app.paths import app_dir, repo_root, validate_repo_layout
 from app.core_adapter.loot_catalog import has_shiny_variant, is_equipment, normalize_item_name
 from app.core_adapter.loot_service import add_loot, create_ppe, delete_ppe, remove_all_loot, remove_loot
 from app.ui.main_window import _prepare_loot_table_image
 from PIL import Image
 from app.storage.models import LocalPlayerData
 from app.storage.player_store import PlayerStore
+
+
+class PathTests(unittest.TestCase):
+    def test_app_dir_from_source(self) -> None:
+        self.assertEqual(app_dir(), APP_ROOT)
+
+    def test_repo_root_from_source(self) -> None:
+        self.assertEqual(repo_root(), APP_ROOT.parent)
+
+    def test_validate_repo_layout_in_checkout(self) -> None:
+        self.assertEqual(validate_repo_layout(), [])
+
+    def test_app_dir_when_frozen(self) -> None:
+        exe_dir = APP_ROOT
+        fake_exe = exe_dir / "RotMG-PPE-Offline.exe"
+        original_frozen = getattr(sys, "frozen", None)
+        original_executable = sys.executable
+        try:
+            sys.frozen = True  # type: ignore[attr-defined]
+            sys.executable = str(fake_exe)
+            self.assertEqual(app_dir(), exe_dir.resolve())
+            self.assertEqual(repo_root(), exe_dir.resolve().parent)
+        finally:
+            if original_frozen is None:
+                delattr(sys, "frozen")
+            else:
+                sys.frozen = original_frozen  # type: ignore[attr-defined]
+            sys.executable = original_executable
 
 
 class ConfigTests(unittest.TestCase):

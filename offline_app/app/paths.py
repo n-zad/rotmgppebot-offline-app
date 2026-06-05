@@ -7,14 +7,33 @@ import sys
 from pathlib import Path
 
 
+def _is_frozen() -> bool:
+    return getattr(sys, "frozen", False)
+
+
 def app_dir() -> Path:
     """Directory containing offline_app/ (this package's parent)."""
+    if _is_frozen():
+        return Path(sys.executable).resolve().parent
     return Path(__file__).resolve().parent.parent
 
 
 def repo_root() -> Path:
     """Parent repository root (sibling of offline_app/)."""
     return app_dir().parent
+
+
+def validate_repo_layout() -> list[str]:
+    """Return human-readable errors when required repo files are missing."""
+    root = repo_root()
+    errors: list[str] = []
+    if not (root / "rotmg_loot_drops_updated.csv").is_file():
+        errors.append(f"Missing loot catalog: {root / 'rotmg_loot_drops_updated.csv'}")
+    if not (root / "create_loot_table.py").is_file():
+        errors.append(f"Missing loot table generator: {root / 'create_loot_table.py'}")
+    if not (root / "helper_pics").is_dir():
+        errors.append(f"Missing helper_pics/: {root / 'helper_pics'}")
+    return errors
 
 
 def data_dir() -> Path:

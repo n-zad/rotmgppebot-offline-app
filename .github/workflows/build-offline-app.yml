@@ -1,0 +1,50 @@
+name: Build offline app
+
+# Build strategy:
+# - run offline_app/build.ps1 on Windows to produce RotMG-PPE-Offline.exe + _internal/
+# - zip the full repository (excluding .venv, .build, and cache dirs)
+# - upload the zip as a workflow artifact for download from the Actions run
+
+on:
+  push:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build executable
+        shell: pwsh
+        working-directory: offline_app
+        run: ./build.ps1
+
+      - name: Create release zip
+        shell: pwsh
+        run: |
+          $zipPath = Join-Path $env:RUNNER_TEMP "rotmg-ppe-offline.zip"
+          if (Test-Path $zipPath) {
+            Remove-Item $zipPath
+          }
+
+          tar -a -cf $zipPath `
+            --exclude=./offline_app/.venv `
+            --exclude=./offline_app/.build `
+            --exclude=./.git `
+            --exclude=**/__pycache__ `
+            .
+
+      - name: Upload release zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: rotmg-ppe-offline-windows
+          path: ${{ runner.temp }}/rotmg-ppe-offline.zip
+          if-no-files-found: error

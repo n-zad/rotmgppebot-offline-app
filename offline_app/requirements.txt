@@ -10,3 +10,4 @@ Image
 pytesseract==0.3.10
 rapidfuzz==3.6.1
 Pillow>=10.3.0
+PyInstaller

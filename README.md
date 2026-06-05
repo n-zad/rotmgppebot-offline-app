@@ -1,5 +1,5 @@
 > [!NOTE]
-> This fork adds an offline app to ROTMG PPE Discord Bot that allows for manual entry of loot without Discord or sniffer/screenshots.  
+> This fork adds an offline app to ROTMG PPE Discord Bot that allows for manual entry of loot without Discord or sniffer/screenshots. The offline app is **Windows only for now**.  
 > See [`offline_app/README.md`](./offline_app/README.md).
 
 # 🧙 ROTMG PPE Discord Bot

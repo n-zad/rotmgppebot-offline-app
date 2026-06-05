@@ -1,24 +1,30 @@
 # RotMG PPE Loot Tracker (Offline)
 
-Local desktop app for tracking PPE loot without Discord or network access. It uses the same loot catalog, point rules, and loot-table image logic as the Discord bot in the parent repository.
+Local desktop app for tracking PPE loot without Discord or network access. It uses the same loot catalog, point rules, and loot-table image logic as the Discord bot in the parent repository. **Windows only for now** (prebuilt executable and release zip)
 
 ## Requirements
 
-- Python 3.10+
-- Parent repo assets (this app lives in `offline_app/` inside the bot repo):
-  - `rotmg_loot_drops_updated.csv`
-  - `helper_pics/`
-  - `create_loot_table.py`
+The full **ROTMG PPE Discord Bot** repo (this app lives in `offline_app/` inside the bot repo):
 
-## Run from source
+**Python 3.10+** is only needed to run from source, run tests, or build a fresh executable. If you use `RotMG-PPE-Offline.exe` (which needs `_internal/`), you do not need Python installed.
 
-```powershell
-cd offline_app
-python -m venv .venv
-.\.venv\Scripts\activate
-pip install -r requirements.txt
-python main.py
-```
+## Download a release
+
+Prebuilt releases are published on GitHub (under **Releases** on this fork). Download the latest zip and extract it where you keep the project (replacing an older copy, or into a new folder). Releases are **Windows only**.
+
+Run `offline_app\RotMG-PPE-Offline.exe` from inside the extracted repository.
+
+### Moving saves from an older install
+
+Player data and settings live under `offline_app/`, not within the executable. To keep them when grabbing a new release:
+
+1. From your **old** install, copy:
+   - `offline_app/data/` (player JSON)
+   - `offline_app/config.json` (if you changed settings)
+2. Paste them into the **new** `offline_app/` folder, overwriting if prompted.
+3. Start the new `RotMG-PPE-Offline.exe`.
+
+(`offline_app/logs/` is optional to copy, skip unless you want old log files)
 
 ## Features
 
@@ -70,6 +76,31 @@ If player JSON is corrupt on load, fix or delete the file and restart.
 - **Blank loot table** — click **Refresh Image**; ensure `helper_pics/dungeon_pics/` exists in the parent repo (see [main README](../README.md)).
 - **Item missing from search** — add it to `rotmg_loot_drops_updated.csv`.
 - **Config error** — fix or delete `config.json` to reset defaults.
+
+## Run from source
+
+```powershell
+cd offline_app
+python -m venv .venv
+.\.venv\Scripts\activate
+pip install -r requirements.txt
+python main.py
+```
+
+## Building the Windows executable (PyInstaller)
+
+Builds `RotMG-PPE-Offline.exe` and `_internal/` in `offline_app/`. Loot CSV, sprites, and shared bot scripts still come from the parent repo at runtime.
+
+If you already created `.venv` and installed dependencies while running from source, use `.\build.ps1 -SkipInstall`.
+
+```powershell
+cd offline_app
+.\build.ps1
+```
+
+Run `offline_app\RotMG-PPE-Offline.exe`.
+
+Clean build outputs: `.\build.ps1 -Clean` (removes PyInstaller staging under `.build/` and also deletes `RotMG-PPE-Offline.exe` and `_internal/` from `offline_app/`).
 
 ## Layout
 

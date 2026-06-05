@@ -1,9 +1,9 @@
 .venv/
+.build/
 __pycache__/
 *.pyc
-dist/
-build/
-packaging/
+RotMG-PPE-Offline.exe
+_internal/
 config.json
 data/*.json
 logs/*.log
