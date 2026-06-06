@@ -37,24 +37,30 @@ jobs:
         run: |
           $repoRoot = Get-Location
           $zipPath = Join-Path $env:RUNNER_TEMP "rotmg-ppe-offline.zip"
+          $stagingDir = Join-Path $env:RUNNER_TEMP "rotmg-ppe-offline-staging"
           $extractDir = Join-Path $env:RUNNER_TEMP "rotmg-ppe-offline"
-          if (Test-Path $zipPath) {
-            Remove-Item $zipPath
+      
+          Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
+          Remove-Item $stagingDir -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue
+      
+          New-Item -ItemType Directory -Force -Path $stagingDir | Out-Null
+      
+          robocopy $repoRoot $stagingDir /E `
+            /XD .git offline_app\.venv offline_app\.build `
+            /XD __pycache__ `
+            /XF *.pyc
+      
+          if ($LASTEXITCODE -le 7) {
+            $global:LASTEXITCODE = 0
+          } else {
+            exit $LASTEXITCODE
           }
-          if (Test-Path $extractDir) {
-            Remove-Item $extractDir -Recurse -Force
-          }
-
-          # Archive from repo root so paths are offline_app/..., not ./offline_app/...
-          tar -a -cf $zipPath -C $repoRoot `
-            --exclude=.git `
-            --exclude=offline_app/.venv `
-            --exclude=offline_app/.build `
-            --exclude=**/__pycache__ `
-            .
-
+      
+          Compress-Archive -Path "$stagingDir\*" -DestinationPath $zipPath -Force
+      
           New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
-          tar -xf $zipPath -C $extractDir
+          Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v6
@@ -67,7 +73,7 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           tag_name: windows-build-${{ github.run_number }}
-          name: Windows offline app (build ${{ github.run_number }})
+          name: RotMG PPE Offline App for Windows (build ${{ github.run_number }})
           body: |
             Prebuilt RotMG PPE offline app for Windows.
 
