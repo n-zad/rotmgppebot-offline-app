@@ -1,0 +1,78 @@
+name: Build and release offline app
+
+# Build strategy:
+# - run offline_app/build.ps1 on Windows to produce RotMG-PPE-Offline.exe + _internal/
+# - zip the full repository (excluding .venv, .build, and cache dirs)
+# - upload the extracted tree as a workflow artifact (avoids zip-in-zip downloads)
+# - publish the zip as a GitHub Release asset
+
+on:
+  push:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    # Pin explicitly; windows-latest/windows-2025 redirect to this image during the VS2026 migration.
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Build executable
+        shell: pwsh
+        working-directory: offline_app
+        run: ./build.ps1
+
+      - name: Create release zip
+        shell: pwsh
+        run: |
+          $repoRoot = Get-Location
+          $zipPath = Join-Path $env:RUNNER_TEMP "rotmg-ppe-offline.zip"
+          $extractDir = Join-Path $env:RUNNER_TEMP "rotmg-ppe-offline"
+          if (Test-Path $zipPath) {
+            Remove-Item $zipPath
+          }
+          if (Test-Path $extractDir) {
+            Remove-Item $extractDir -Recurse -Force
+          }
+
+          # Archive from repo root so paths are offline_app/..., not ./offline_app/...
+          tar -a -cf $zipPath -C $repoRoot `
+            --exclude=.git `
+            --exclude=offline_app/.venv `
+            --exclude=offline_app/.build `
+            --exclude=**/__pycache__ `
+            .
+
+          New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
+          tar -xf $zipPath -C $extractDir
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: rotmg-ppe-offline-windows
+          path: ${{ runner.temp }}/rotmg-ppe-offline
+          if-no-files-found: error
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: windows-build-${{ github.run_number }}
+          name: Windows offline app (build ${{ github.run_number }})
+          body: |
+            Prebuilt RotMG PPE offline app for Windows.
+
+            Extract the zip and run `offline_app\RotMG-PPE-Offline.exe`.
+
+            Commit: ${{ github.sha }}
+          files: ${{ runner.temp }}/rotmg-ppe-offline.zip
+          make_latest: true
