@@ -2,6 +2,8 @@
 
 Local desktop app for tracking PPE loot without Discord or network access. It uses the same loot catalog, point rules, and loot-table image logic as the Discord bot in the parent repository. **Windows only for now** (prebuilt executable and release zip)
 
+![image](assets/app_screenshot.png)
+
 ## Requirements
 
 The full **ROTMG PPE Discord Bot** repo (this app lives in `offline_app/` inside the bot repo):
