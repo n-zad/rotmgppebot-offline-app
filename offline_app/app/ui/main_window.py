@@ -16,7 +16,13 @@ from app.config.settings import (
     normalize_loot_table_display_scale,
     save_config,
 )
-from app.core_adapter.loot_catalog import has_shiny_variant, is_equipment
+from app.core_adapter.loot_catalog import (
+    has_shiny_variant,
+    is_equipment,
+    is_shiny_only_item,
+    required_rarity,
+    supports_rarity_tiers,
+)
 from app.core_adapter.repo_paths import app_icon_path
 from app.paths import data_dir
 from app.ui.item_autocomplete import ItemAutocomplete
@@ -381,7 +387,7 @@ class MainWindow:
         self.include_limited_var = tk.BooleanVar(value=self.config.include_limited)
         ttk.Checkbutton(
             variant_frame,
-            text="Include skins",
+            text="Include skins & treasures",
             variable=self.include_skins_var,
             command=self._on_variant_changed,
         ).grid(row=0, column=0, sticky="w")
@@ -592,22 +598,34 @@ class MainWindow:
         self._set_status(f"Deleted {deleted.class_name} (#{deleted.id}).")
 
     def _on_shiny_toggled(self) -> None:
-        self.rarity_selector.set_shiny(self.shiny_var.get())
+        self._update_item_entry_state()
 
     def _update_item_entry_state(self) -> None:
         item = self.item_var.get().strip()
-        if item and has_shiny_variant(item):
+        shiny_only = bool(item and is_shiny_only_item(item))
+        if shiny_only:
+            self.shiny_var.set(True)
+            self.shiny_check.configure(state="disabled")
+        elif item and has_shiny_variant(item):
             self.shiny_check.configure(state="normal")
         else:
             self.shiny_var.set(False)
             self.shiny_check.configure(state="disabled")
 
-        self.rarity_selector.set_shiny(self.shiny_var.get())
+        shiny = self.shiny_var.get()
+        self.rarity_selector.set_shiny(shiny)
 
-        if item and is_equipment(item):
+        fixed_rarity = required_rarity(item, shiny=shiny) if item else None
+        if item and (supports_rarity_tiers(item) or fixed_rarity):
             self.rarity_selector.set_enabled(True)
+            if fixed_rarity:
+                self.rarity_var.set(fixed_rarity)
+                self.rarity_selector.set_allowed_rarities(frozenset({fixed_rarity}))
+            else:
+                self.rarity_selector.set_allowed_rarities(None)
         else:
             self.rarity_var.set("common")
+            self.rarity_selector.set_allowed_rarities(None)
             self.rarity_selector.set_enabled(False)
 
     def _selected_loot_entry(self) -> LocalLootEntry | None:

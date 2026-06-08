@@ -45,7 +45,7 @@ Player data and settings live under `offline_app/`, not within the executable. T
 5. Adjust **Display scale** (saved in config) or use **Fit to Window** for a one-off viewport fit.
 6. Use **Export** to save the loot table image.
 
-Toggle **Include skins** / **Include limited** to switch loot table variants.
+Toggle **Include skins & treasures** / **Include limited** to switch loot table variants.
 
 ## Configuration
 
@@ -55,7 +55,7 @@ Toggle **Include skins** / **Include limited** to switch loot table variants.
 |-----|---------|
 | `player_name` | Display/default name for local saves |
 | `player_data_file` | Path to player JSON |
-| `include_skins` / `include_limited` | Default loot table variant toggles |
+| `include_skins` / `include_limited` | Default loot table variant toggles (`include_skins` also shows treasure items) |
 | `loot_table_display_scale` | Default table zoom (0.05–1.0, e.g. `0.75` = 75%) |
 | `points_settings.rarity_multipliers` | Point multipliers per rarity |
 | `logging.level` | `DEBUG`, `INFO`, etc. |

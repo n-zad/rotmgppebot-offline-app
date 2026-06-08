@@ -8,7 +8,13 @@ from dataclasses import dataclass
 from typing import Iterable
 
 from app.config.settings import AppConfig
-from app.core_adapter.loot_catalog import calc_item_points, is_equipment, validate_loot_input
+from app.core_adapter.loot_catalog import (
+    calc_item_points,
+    is_equipment,
+    required_rarity,
+    supports_rarity_tiers,
+    validate_loot_input,
+)
 from app.storage.models import LocalLootEntry, LocalPPE, LocalPlayerData
 
 logger = logging.getLogger(__name__)
@@ -61,10 +67,20 @@ def add_loot(
     rarity = rarity.lower().strip()
     if rarity not in RARITY_CHOICES:
         raise ValueError(f"Invalid rarity '{rarity}'. Choose one of: {', '.join(RARITY_CHOICES)}.")
-    if not is_equipment(item_name) and rarity != "common":
+
+    fixed_rarity = required_rarity(item_name, shiny=shiny)
+    if fixed_rarity:
+        if rarity != fixed_rarity:
+            raise ValueError(f"'{item_name}' must be logged as {fixed_rarity.title()} rarity.")
+        rarity = fixed_rarity
+    elif not supports_rarity_tiers(item_name) and rarity != "common":
         raise ValueError("Only equipment (weapon, ability, armor, ring) supports rarity tiers.")
-    if shiny and is_equipment(item_name) and RARITY_CHOICES.index(rarity) < RARITY_CHOICES.index(
-        SHINY_MINIMUM_RARITY
+
+    if (
+        shiny
+        and is_equipment(item_name)
+        and fixed_rarity is None
+        and RARITY_CHOICES.index(rarity) < RARITY_CHOICES.index(SHINY_MINIMUM_RARITY)
     ):
         raise ValueError(f"Shiny equipment must be at least {SHINY_MINIMUM_RARITY.title()} rarity.")
 

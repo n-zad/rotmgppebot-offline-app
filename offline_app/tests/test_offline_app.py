@@ -14,7 +14,14 @@ if str(APP_ROOT) not in sys.path:
 
 from app.config.settings import AppConfig, _config_from_raw, normalize_loot_table_display_scale
 from app.paths import app_dir, repo_root, validate_repo_layout
-from app.core_adapter.loot_catalog import has_shiny_variant, is_equipment, normalize_item_name
+from app.core_adapter.loot_catalog import (
+    has_shiny_variant,
+    is_equipment,
+    is_shiny_only_item,
+    normalize_item_name,
+    required_rarity,
+    supports_rarity_tiers,
+)
 from app.core_adapter.loot_service import add_loot, create_ppe, delete_ppe, remove_all_loot, remove_loot
 from app.ui.main_window import _prepare_loot_table_image
 from PIL import Image
@@ -73,8 +80,25 @@ class CatalogTests(unittest.TestCase):
         self.assertTrue(is_equipment("Dagger of Dire Hatred"))
         self.assertTrue(is_equipment("Demon Blade"))
         self.assertTrue(is_equipment("Arcane Rapier"))
+        self.assertTrue(is_equipment("Predator Bow"))
+        self.assertTrue(is_equipment("Aegis Armor"))
+        self.assertTrue(is_equipment("Mayhem Medallion"))
+        self.assertTrue(is_equipment("Kendo Stick"))
         self.assertFalse(is_equipment("Golden Nut"))
         self.assertFalse(is_equipment("Potion of Attack"))
+        self.assertFalse(is_equipment("Bunny Trickster Skin"))
+        self.assertFalse(is_equipment("Moon Bunny Pet Skin"))
+        self.assertFalse(is_equipment("Kogbold Enhancement Core"))
+        self.assertFalse(is_equipment("Master Fishing Rod"))
+
+    def test_edge_case_rarity_rules(self) -> None:
+        self.assertFalse(supports_rarity_tiers("Kogbold Enhancement Core"))
+        self.assertFalse(supports_rarity_tiers("Master Fishing Rod"))
+        self.assertTrue(supports_rarity_tiers("Kendo Stick"))
+        self.assertEqual(required_rarity("Nightmatter Circlet", shiny=False), "divine")
+        self.assertEqual(required_rarity("Kendo Stick", shiny=True), "divine")
+        self.assertEqual(required_rarity("Jewel Eye Katana", shiny=True), "divine")
+        self.assertIsNone(required_rarity("Kendo Stick", shiny=False))
 
     def test_shiny_variant_detection(self) -> None:
         self.assertTrue(has_shiny_variant("Demon Blade"))
@@ -151,6 +175,76 @@ class LootServiceTests(unittest.TestCase):
         )
         self.assertEqual(result.removed_count, 3)
         self.assertEqual(len(ppe.loot), 0)
+
+    def test_kendo_stick_accepts_rarity(self) -> None:
+        ppe = create_ppe(self.player, class_name="Samurai")
+        result = add_loot(
+            self.player,
+            ppe_id=ppe.id,
+            item_name="Kendo Stick",
+            shiny=False,
+            rarity="rare",
+            config=self.config,
+        )
+        self.assertEqual(result.rarity, "rare")
+
+    def test_kendo_stick_shiny_requires_divine(self) -> None:
+        ppe = create_ppe(self.player, class_name="Samurai")
+        with self.assertRaises(ValueError):
+            add_loot(
+                self.player,
+                ppe_id=ppe.id,
+                item_name="Kendo Stick",
+                shiny=True,
+                rarity="rare",
+                config=self.config,
+            )
+        result = add_loot(
+            self.player,
+            ppe_id=ppe.id,
+            item_name="Kendo Stick",
+            shiny=True,
+            rarity="divine",
+            config=self.config,
+        )
+        self.assertEqual(result.rarity, "divine")
+
+    def test_jewel_eye_katana_shiny_only_divine(self) -> None:
+        ppe = create_ppe(self.player, class_name="Samurai")
+        result = add_loot(
+            self.player,
+            ppe_id=ppe.id,
+            item_name="Jewel Eye Katana",
+            shiny=True,
+            rarity="divine",
+            config=self.config,
+        )
+        self.assertEqual(result.rarity, "divine")
+
+    def test_kogbold_core_common_only_even_shiny(self) -> None:
+        ppe = create_ppe(self.player, class_name="Wizard")
+        with self.assertRaises(ValueError):
+            add_loot(
+                self.player,
+                ppe_id=ppe.id,
+                item_name="Kogbold Enhancement Core",
+                shiny=True,
+                rarity="rare",
+                config=self.config,
+            )
+
+    def test_limited_equipment_accepts_rarity(self) -> None:
+        ppe = create_ppe(self.player, class_name="Archer")
+        result = add_loot(
+            self.player,
+            ppe_id=ppe.id,
+            item_name="Predator Bow",
+            shiny=False,
+            rarity="legendary",
+            config=self.config,
+        )
+        self.assertEqual(result.rarity, "legendary")
+        self.assertEqual(ppe.loot[0].item_name, "Predator Bow")
 
     def test_shiny_equipment_requires_rare_or_higher(self) -> None:
         ppe = create_ppe(self.player, class_name="Wizard")

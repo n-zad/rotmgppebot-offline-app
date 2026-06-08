@@ -112,6 +112,7 @@ class RaritySelector(ttk.Frame):
         self._variable = variable
         self._equipment_mode = False
         self._shiny_mode = False
+        self._allowed_rarities: frozenset[str] | None = None
         self._photos: dict[str, ImageTk.PhotoImage] = {}
         self._unavailable_photos: dict[str, ImageTk.PhotoImage] = {}
         self._cells: dict[str, tk.Frame] = {}
@@ -160,6 +161,8 @@ class RaritySelector(ttk.Frame):
     def _is_selectable(self, rarity: str) -> bool:
         if not self._equipment_mode:
             return rarity == "common"
+        if self._allowed_rarities is not None:
+            return rarity in self._allowed_rarities
         if self._shiny_mode and RARITY_CHOICES.index(rarity) < RARITY_CHOICES.index(SHINY_MINIMUM_RARITY):
             return False
         return True
@@ -218,6 +221,12 @@ class RaritySelector(ttk.Frame):
     def set_enabled(self, enabled: bool) -> None:
         """Enable equipment-only rarities when *enabled* is True."""
         self._equipment_mode = enabled
+        self._coerce_rarity()
+        self._refresh_selection()
+
+    def set_allowed_rarities(self, allowed: frozenset[str] | None) -> None:
+        """Restrict selectable rarities; *None* uses default equipment/shiny rules."""
+        self._allowed_rarities = allowed
         self._coerce_rarity()
         self._refresh_selection()
 
