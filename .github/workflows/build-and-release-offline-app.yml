@@ -41,9 +41,16 @@ jobs:
           head_sha=$(git rev-parse HEAD)
           echo "offline-app HEAD: $head_sha"
 
-          latest_body=$(gh release list --limit 1 --json body --jq '.[0].body // empty')
-          if [ -z "$latest_body" ]; then
+          latest_tag=$(gh release list --limit 1 --json tagName --jq '.[0].tagName // empty')
+          if [ -z "$latest_tag" ]; then
             echo "No prior release found; a release is needed."
+            echo "needs_release=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          latest_body=$(gh release view "$latest_tag" --json body --jq '.body // empty')
+          if [ -z "$latest_body" ]; then
+            echo "Latest release ($latest_tag) has no body; a release is needed."
             echo "needs_release=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
