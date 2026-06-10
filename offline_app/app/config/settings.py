@@ -61,9 +61,17 @@ class AppConfig:
 
     def guild_config_stub(self) -> dict[str, Any]:
         """Shape compatible with upstream calc_points / points helpers."""
+        from app.core_adapter.repo_paths import ensure_repo_imports
+
+        ensure_repo_imports()
+        from utils.guild_config import _DEFAULT_CONFIG
+
+        point_defaults = _DEFAULT_CONFIG["points_settings"]
         return {
             "points_settings": {
                 "rarity_multipliers": dict(self.rarity_multipliers),
+                "duplicate_point_reduction": point_defaults["duplicate_point_reduction"],
+                "duplicate_match_mode": point_defaults["duplicate_match_mode"],
             }
         }
 

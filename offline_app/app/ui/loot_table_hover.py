@@ -12,9 +12,12 @@ import tkinter as tk
 from PIL import Image, ImageTk
 
 from app.config.settings import AppConfig
-from app.core_adapter.loot_catalog import calc_item_points
 from app.core_adapter.loot_renderer import SpriteCell, SpriteHitIndex, entry_sprite_lookup_key
 from app.core_adapter.loot_service import format_loot_label
+from app.core_adapter.points_adapter import (
+    entry_index_for_loot_entry,
+    loot_drop_points_by_entry_index,
+)
 from app.core_adapter.repo_paths import ensure_repo_imports
 from app.storage.models import LocalLootEntry, LocalPPE
 
@@ -95,6 +98,7 @@ def build_tooltip_text(
     *,
     config: AppConfig,
     condensed: bool = False,
+    ppe: LocalPPE | None = None,
 ) -> tuple[str, list[str]]:
     """Return a title line and body lines for the hover tooltip."""
     title = cell.item_name
@@ -104,15 +108,15 @@ def build_tooltip_text(
         body.append("Not logged on this PPE.")
         return title, body
 
+    drop_points: dict[int, list[float]] = {}
+    if ppe is not None:
+        drop_points = loot_drop_points_by_entry_index(ppe, config)
+
     grand_total = 0.0
     for entry in sorted(entries, key=lambda item: (item.rarity, item.quantity)):
-        per_copy = calc_item_points(
-            entry.item_name,
-            shiny=entry.shiny,
-            rarity=entry.rarity,
-            rarity_multipliers=config.rarity_multipliers,
-        )
-        entry_total = per_copy * entry.quantity
+        entry_index = entry_index_for_loot_entry(ppe, entry) if ppe is not None else None
+        per_drop = drop_points.get(entry_index, []) if entry_index is not None else []
+        entry_total = sum(per_drop)
         grand_total += entry_total
         label = format_loot_label(entry, include_quantity=True)
         if condensed:
@@ -124,15 +128,26 @@ def build_tooltip_text(
         timestamps = list(entry.logged_times)
         if timestamps:
             for index, ts in enumerate(timestamps, start=1):
-                body.append(f"  #{index}: +{_format_points(per_copy)} pts — {_format_timestamp(ts)}")
+                drop_value = per_drop[index - 1] if index - 1 < len(per_drop) else None
+                if drop_value is None:
+                    body.append(f"  #{index}: — {_format_timestamp(ts)}")
+                else:
+                    body.append(f"  #{index}: +{_format_points(drop_value)} pts — {_format_timestamp(ts)}")
             if entry.quantity > len(timestamps):
                 extra = entry.quantity - len(timestamps)
                 body.append(f"  (+{extra} more without timestamps)")
         else:
             if entry.quantity == 1:
-                body.append(f"  +{_format_points(per_copy)} pts")
+                drop_value = per_drop[0] if per_drop else None
+                if drop_value is None:
+                    body.append("  — pts")
+                else:
+                    body.append(f"  +{_format_points(drop_value)} pts")
+            elif per_drop:
+                for index, drop_value in enumerate(per_drop, start=1):
+                    body.append(f"  #{index}: +{_format_points(drop_value)} pts")
             else:
-                body.append(f"  {entry.quantity}× +{_format_points(per_copy)} pts each")
+                body.append(f"  {entry.quantity}× — pts each")
 
         body.append(f"  Subtotal: {_format_points(entry_total)} pts")
 
@@ -391,6 +406,7 @@ class LootTableHoverController:
             entries,
             config=self._config,
             condensed=self._hover_condensed(),
+            ppe=ppe,
         )
 
         shiny = cell.lookup_key.endswith(" (shiny)")

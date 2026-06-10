@@ -9,12 +9,12 @@ from typing import Iterable
 
 from app.config.settings import AppConfig
 from app.core_adapter.loot_catalog import (
-    calc_item_points,
     is_equipment,
     required_rarity,
     supports_rarity_tiers,
     validate_loot_input,
 )
+from app.core_adapter.points_adapter import recompute_local_ppe_points
 from app.storage.models import LocalLootEntry, LocalPPE, LocalPlayerData
 
 logger = logging.getLogger(__name__)
@@ -42,16 +42,7 @@ def _find_loot(ppe: LocalPPE, item_name: str, shiny: bool, rarity: str) -> Local
 
 
 def _recompute_points(ppe: LocalPPE, config: AppConfig) -> None:
-    total = 0.0
-    for entry in ppe.loot:
-        per_item = calc_item_points(
-            entry.item_name,
-            shiny=entry.shiny,
-            rarity=entry.rarity,
-            rarity_multipliers=config.rarity_multipliers,
-        )
-        total += per_item * entry.quantity
-    ppe.points = round(total, 2)
+    ppe.points = recompute_local_ppe_points(ppe, config)
 
 
 def add_loot(

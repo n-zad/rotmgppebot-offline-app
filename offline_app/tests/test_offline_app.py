@@ -26,9 +26,8 @@ from app.core_adapter.loot_service import add_loot, create_ppe, delete_ppe, remo
 from app.core_adapter.loot_renderer import SpriteCell, build_sprite_hit_index, entry_sprite_lookup_key
 from app.ui.loot_table_hover import build_tooltip_text, compute_tooltip_position
 from app.ui.main_window import _prepare_loot_table_image, prepare_loot_table_image
-from app.storage.models import LocalLootEntry
+from app.storage.models import LocalLootEntry, LocalPPE, LocalPlayerData
 from PIL import Image
-from app.storage.models import LocalPlayerData
 from app.storage.player_store import PlayerStore
 
 
@@ -190,6 +189,31 @@ class LootServiceTests(unittest.TestCase):
         )
         self.assertEqual(result.removed_count, 3)
         self.assertEqual(len(ppe.loot), 0)
+
+    def test_duplicate_items_use_reduced_points(self) -> None:
+        ppe = create_ppe(self.player, class_name="Wizard")
+        add_loot(
+            self.player,
+            ppe_id=ppe.id,
+            item_name="Dagger of Dire Hatred",
+            shiny=False,
+            rarity="common",
+            config=self.config,
+        )
+        first_total = ppe.points
+        self.assertGreater(first_total, 0)
+
+        add_loot(
+            self.player,
+            ppe_id=ppe.id,
+            item_name="Dagger of Dire Hatred",
+            shiny=False,
+            rarity="common",
+            config=self.config,
+        )
+        duplicate_total = ppe.points
+        self.assertGreater(duplicate_total, first_total)
+        self.assertLess(duplicate_total, first_total * 2)
 
     def test_kendo_stick_accepts_rarity(self) -> None:
         ppe = create_ppe(self.player, class_name="Samurai")
@@ -388,7 +412,8 @@ class LootTableHoverTests(unittest.TestCase):
             rarity="divine",
             logged_times=[1_700_000_000, 1_700_000_100],
         )
-        title, logged = build_tooltip_text(cell, [entry], config=config)
+        ppe = LocalPPE(id=1, class_name="Wizard", loot=[entry])
+        title, logged = build_tooltip_text(cell, [entry], config=config, ppe=ppe)
         self.assertEqual(title, "Dagger of Dire Hatred")
         body = "\n".join(logged)
         self.assertIn("#1:", body)
@@ -410,7 +435,8 @@ class LootTableHoverTests(unittest.TestCase):
             rarity="divine",
             logged_times=[1_700_000_000, 1_700_000_100],
         )
-        _, condensed = build_tooltip_text(cell, [entry], config=config, condensed=True)
+        ppe = LocalPPE(id=1, class_name="Wizard", loot=[entry])
+        _, condensed = build_tooltip_text(cell, [entry], config=config, condensed=True, ppe=ppe)
         body = "\n".join(condensed)
         self.assertIn("(+", body)
         self.assertNotIn("#1:", body)
