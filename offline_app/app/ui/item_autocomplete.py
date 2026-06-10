@@ -81,6 +81,7 @@ class ItemAutocomplete(ttk.Frame):
 
         self.entry.bind("<KeyRelease>", self._on_entry_key_release)
         self.entry.bind("<KeyPress>", self._on_entry_key_press)
+        self.entry.bind("<Button-1>", self._on_entry_button_press)
         self.entry.bind("<FocusIn>", self._on_entry_focus_in)
         self.entry.bind("<FocusOut>", self._on_entry_focus_out)
         self.listbox.bind("<Button-1>", self._on_listbox_button)
@@ -108,6 +109,22 @@ class ItemAutocomplete(ttk.Frame):
                 return True
             current = current.master  # type: ignore[assignment]
         return False
+
+    def _entry_has_focus(self) -> bool:
+        focused = self._safe_focus_get()
+        return focused is not None and focused == self.entry
+
+    def _defocus_entry(self) -> None:
+        try:
+            self.winfo_toplevel().focus_set()
+        except tk.TclError:
+            pass
+
+    def _select_all_entry_text(self) -> None:
+        if not self._entry_has_focus():
+            return
+        self.entry.select_range(0, tk.END)
+        self.entry.icursor(tk.END)
 
     def _cancel_hide(self, *_args: object) -> None:
         if self._hide_after_id is not None:
@@ -194,6 +211,9 @@ class ItemAutocomplete(ttk.Frame):
         self.listbox.activate(index)
         self.listbox.see(index)
 
+    def _on_entry_button_press(self, _event: tk.Event) -> None:
+        self.after_idle(self._select_all_entry_text)
+
     def _on_entry_focus_in(self, _event: tk.Event) -> None:
         self._refresh_suggestions()
 
@@ -209,11 +229,12 @@ class ItemAutocomplete(ttk.Frame):
         self._hide_suggestions()
 
     def _on_global_button_press(self, event: tk.Event) -> None:
-        if not self._suggestions_visible:
-            return
         if self._is_internal_widget(event.widget):
             return
-        self._hide_suggestions()
+        if self._entry_has_focus():
+            self._defocus_entry()
+        if self._suggestions_visible:
+            self._hide_suggestions()
 
     def _on_root_configure(self, event: tk.Event) -> None:
         if not self._suggestions_visible:
