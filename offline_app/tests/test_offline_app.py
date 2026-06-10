@@ -431,6 +431,26 @@ class PlayerStoreTests(unittest.TestCase):
             self.assertEqual(len(loaded.ppes), 1)
             self.assertEqual(loaded.ppes[0].class_name, "Archer")
 
+    def test_active_ppe_round_trip(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "player.json"
+            store = PlayerStore(path)
+            player = LocalPlayerData.empty("Tester")
+            first = create_ppe(player, class_name="Wizard")
+            second = create_ppe(player, class_name="Archer")
+            player.active_ppe_id = first.id
+            store.save(player)
+
+            loaded = store.load(default_name="Tester")
+            self.assertEqual(loaded.active_ppe_id, first.id)
+            self.assertEqual(loaded.active_ppe().id, first.id)
+
+            player.active_ppe_id = second.id
+            store.save(player)
+            reloaded = store.load(default_name="Tester")
+            self.assertEqual(reloaded.active_ppe_id, second.id)
+            self.assertEqual(reloaded.active_ppe().class_name, "Archer")
+
     def test_corrupt_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "player.json"

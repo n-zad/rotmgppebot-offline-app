@@ -601,6 +601,7 @@ class MainWindow:
             if self._ppe_label(ppe) == label:
                 self.player.active_ppe_id = ppe.id
                 break
+        self._autosave_player()
         self._refresh_ppe_selector()
         self._refresh_loot_list()
         self._refresh_loot_table_image()
