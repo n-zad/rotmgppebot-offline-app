@@ -1,26 +1,101 @@
 name: Build and release offline app
 
 # Build strategy:
+# - run daily at 13:00 UTC, one hour after sync-upstream (12:00 UTC)
+# - skip unless HEAD on offline-app differs from the latest release's source commit
+# - run offline_app tests before building
 # - run offline_app/build.ps1 on Windows to produce RotMG-PPE-Offline.exe + _internal/
 # - zip the full repository (excluding .venv, .build, and cache dirs)
-# - upload the extracted tree as a workflow artifact (avoids zip-in-zip downloads)
+# - upload the extracted tree as a workflow artifact
 # - publish the zip as a GitHub Release asset
 
 on:
-  push:
+  schedule:
+    # One hour after sync-upstream.yml (cron: 0 12 * * *).
+    - cron: "0 13 * * *"
+  workflow_dispatch:
 
 permissions:
   contents: write
 
+concurrency:
+  group: build-and-release-offline-app
+  cancel-in-progress: false
+
 jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      needs_release: ${{ steps.check.outputs.needs_release }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: offline-app
+
+      - name: Check if a new release is needed
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          head_sha=$(git rev-parse HEAD)
+          echo "offline-app HEAD: $head_sha"
+
+          latest_body=$(gh release list --limit 1 --json body --jq '.[0].body // empty')
+          if [ -z "$latest_body" ]; then
+            echo "No prior release found; a release is needed."
+            echo "needs_release=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          release_sha=$(printf '%s\n' "$latest_body" | sed -n 's/^Source commit: \([0-9a-f]\{40\}\).*/\1/p' | head -n 1)
+          if [ -z "$release_sha" ]; then
+            echo "Could not parse source commit from latest release; a release is needed."
+            echo "needs_release=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "$release_sha" = "$head_sha" ]; then
+            echo "Latest release already covers $head_sha; skipping build and release."
+            echo "needs_release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "HEAD ($head_sha) differs from latest release ($release_sha); a release is needed."
+            echo "needs_release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  test:
+    needs: check
+    if: needs.check.outputs.needs_release == 'true'
+    runs-on: windows-2025-vs2026
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: offline-app
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install test dependencies
+        run: pip install -r offline_app/requirements.txt
+
+      - name: Run tests
+        working-directory: offline_app
+        run: python -m unittest discover -s tests -v
+
   build-and-release:
-    # Pin explicitly; windows-latest/windows-2025 redirect to this image during the VS2026 migration.
+    needs: [check, test]
+    if: needs.check.outputs.needs_release == 'true'
     runs-on: windows-2025-vs2026
     timeout-minutes: 90
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          ref: offline-app
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -40,25 +115,25 @@ jobs:
           $stagingRoot = Join-Path $env:RUNNER_TEMP "release-staging"
           $appFolder = Join-Path $stagingRoot "rotmg-ppe-offline"
           $extractDir = Join-Path $env:RUNNER_TEMP "extract-test"
-      
+
           Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
           Remove-Item $stagingRoot -Recurse -Force -ErrorAction SilentlyContinue
           Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue
-      
+
           New-Item -ItemType Directory -Force -Path $appFolder | Out-Null
-      
+
           robocopy $repoRoot $appFolder /E `
             /XD .git offline_app\.venv offline_app\.build __pycache__ `
             /XF *.pyc
-      
+
           if ($LASTEXITCODE -le 7) {
             $global:LASTEXITCODE = 0
           } else {
             exit $LASTEXITCODE
           }
-      
+
           tar -a -cf $zipPath -C $stagingRoot "rotmg-ppe-offline"
-      
+
           New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
           tar -xf $zipPath -C $extractDir
 
