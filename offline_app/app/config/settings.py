@@ -33,6 +33,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "include_skins": False,
     "include_limited": False,
     "loot_table_display_scale": DEFAULT_LOOT_TABLE_DISPLAY_SCALE,
+    "loot_table_hover_enabled": True,
+    "loot_table_hover_condensed": False,
     "points_settings": {
         "rarity_multipliers": deepcopy(DEFAULT_RARITY_MULTIPLIERS),
     },
@@ -51,6 +53,8 @@ class AppConfig:
     include_skins: bool = False
     include_limited: bool = False
     loot_table_display_scale: float = DEFAULT_LOOT_TABLE_DISPLAY_SCALE
+    loot_table_hover_enabled: bool = True
+    loot_table_hover_condensed: bool = False
     rarity_multipliers: dict[str, float] = field(default_factory=lambda: deepcopy(DEFAULT_RARITY_MULTIPLIERS))
     log_level: str = "INFO"
     log_to_file: bool = True
@@ -122,6 +126,8 @@ def _config_from_raw(raw: dict[str, Any]) -> AppConfig:
         loot_table_display_scale=normalize_loot_table_display_scale(
             float(raw.get("loot_table_display_scale", DEFAULT_LOOT_TABLE_DISPLAY_SCALE))
         ),
+        loot_table_hover_enabled=bool(raw.get("loot_table_hover_enabled", True)),
+        loot_table_hover_condensed=bool(raw.get("loot_table_hover_condensed", False)),
         rarity_multipliers={str(k): float(v) for k, v in multipliers.items()},
         log_level=str(logging_cfg.get("level", "INFO")),
         log_to_file=bool(logging_cfg.get("log_to_file", True)),
@@ -137,6 +143,8 @@ def save_config(config: AppConfig) -> None:
         "include_skins": config.include_skins,
         "include_limited": config.include_limited,
         "loot_table_display_scale": config.loot_table_display_scale,
+        "loot_table_hover_enabled": config.loot_table_hover_enabled,
+        "loot_table_hover_condensed": config.loot_table_hover_condensed,
         "points_settings": {"rarity_multipliers": config.rarity_multipliers},
         "logging": {"level": config.log_level, "log_to_file": config.log_to_file},
     }

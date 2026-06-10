@@ -37,6 +37,30 @@ class RenderResult:
     warnings: list[str]
 
 
+@dataclass(frozen=True)
+class SpriteCell:
+    item_name: str
+    lookup_key: str
+    pixel_x: int
+    pixel_y: int
+
+
+@dataclass(frozen=True)
+class SpriteHitIndex:
+    cells: dict[tuple[int, int], SpriteCell]
+    cell_size: int = 40
+
+    def lookup(self, source_x: float, source_y: float, *, crop_offset: tuple[int, int]) -> SpriteCell | None:
+        """Map coordinates in the cropped source image back to a catalog sprite cell."""
+        orig_x = source_x + crop_offset[0]
+        orig_y = source_y + crop_offset[1]
+        if orig_x < 0 or orig_y < 0:
+            return None
+        cell_x = int(orig_x // self.cell_size) * self.cell_size
+        cell_y = int(orig_y // self.cell_size) * self.cell_size
+        return self.cells.get((cell_x, cell_y))
+
+
 def variant_from_flags(include_skins: bool, include_limited: bool) -> str:
     if include_skins and include_limited:
         return "all"
@@ -100,6 +124,36 @@ def ensure_assets() -> tuple[bool, list[str]]:
 
 def _lookup_key(name: str) -> str:
     return normalize_item_name(name).casefold()
+
+
+def entry_sprite_lookup_key(item_name: str, *, shiny: bool) -> str:
+    """Sprite-map key for a loot entry (matches render_loot_table sprite_key)."""
+    key = _lookup_key(item_name)
+    return f"{key} (shiny)" if shiny else key
+
+
+def build_sprite_hit_index(
+    *,
+    include_skins: bool = False,
+    include_limited: bool = False,
+) -> SpriteHitIndex:
+    """Spatial index of every catalog item in the loot table grid for the given variant."""
+    variant = variant_from_flags(include_skins, include_limited)
+    sprite_csv, _background_file = _variant_asset_paths(variant)
+    cells: dict[tuple[int, int], SpriteCell] = {}
+    with open(sprite_csv, encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        for row in reader:
+            pixel_x = int(row["pixel_x"])
+            pixel_y = int(row["pixel_y"])
+            item_name = str(row["item_name"]).strip()
+            cells[(pixel_x, pixel_y)] = SpriteCell(
+                item_name=item_name,
+                lookup_key=_lookup_key(item_name),
+                pixel_x=pixel_x,
+                pixel_y=pixel_y,
+            )
+    return SpriteHitIndex(cells=cells)
 
 
 @lru_cache(maxsize=16)

@@ -28,7 +28,8 @@ from app.paths import data_dir
 from app.ui.item_autocomplete import ItemAutocomplete
 from app.ui.loot_list_view import LootListView
 from app.ui.rarity_selector import RaritySelector
-from app.core_adapter.loot_renderer import render_loot_table
+from app.core_adapter.loot_renderer import build_sprite_hit_index, render_loot_table
+from app.ui.loot_table_hover import LootTableHoverController
 from app.core_adapter.loot_service import (
     add_loot,
     create_ppe,
@@ -180,9 +181,24 @@ def _shrink_margin(start: int, end: int, total: int, *, fraction: float) -> tupl
     return new_start, new_end
 
 
-def _prepare_loot_table_image(image: Image.Image) -> Image.Image:
-    """Trim transparency, then tighten gray grid margins so fit-to-window centers better."""
-    rgba = _trim_transparent_margins(image)
+def prepare_loot_table_image(image: Image.Image) -> tuple[Image.Image, tuple[int, int]]:
+    """Trim transparency, tighten gray grid margins, and return crop offset into the input image."""
+    offset_left = 0
+    offset_top = 0
+
+    rgba = image.convert("RGBA")
+    bbox = rgba.getbbox()
+    if bbox is not None:
+        left, top, right, bottom = bbox
+        left = max(0, left - _TRIM_CONTENT_MARGIN)
+        top = max(0, top - _TRIM_CONTENT_MARGIN)
+        right = min(rgba.width, right + _TRIM_CONTENT_MARGIN)
+        bottom = min(rgba.height, bottom + _TRIM_CONTENT_MARGIN)
+        if (left, top, right, bottom) != (0, 0, rgba.width, rgba.height):
+            offset_left += left
+            offset_top += top
+            rgba = rgba.crop((left, top, right, bottom))
+
     left, top, right, bottom = _axis_content_bounds(rgba)
     top, bottom = _shrink_margin(top, bottom, rgba.height, fraction=_MARGIN_SHRINK_FRACTION)
     left, right = _shrink_margin(left, right, rgba.width, fraction=_MARGIN_SHRINK_FRACTION)
@@ -190,9 +206,17 @@ def _prepare_loot_table_image(image: Image.Image) -> Image.Image:
     top = max(0, top - _TRIM_CONTENT_MARGIN)
     right = min(rgba.width, right + _TRIM_CONTENT_MARGIN)
     bottom = min(rgba.height, bottom + _TRIM_CONTENT_MARGIN)
-    if (left, top, right, bottom) == (0, 0, rgba.width, rgba.height):
-        return rgba
-    return rgba.crop((left, top, right, bottom))
+    if (left, top, right, bottom) != (0, 0, rgba.width, rgba.height):
+        offset_left += left
+        offset_top += top
+        rgba = rgba.crop((left, top, right, bottom))
+    return rgba, (offset_left, offset_top)
+
+
+def _prepare_loot_table_image(image: Image.Image) -> Image.Image:
+    """Trim transparency, then tighten gray grid margins so fit-to-window centers better."""
+    prepared, _ = prepare_loot_table_image(image)
+    return prepared
 
 
 def _tk_photoimage(image: Image.Image, *, master: tk.Misc) -> ImageTk.PhotoImage:
@@ -261,6 +285,9 @@ class MainWindow:
         self._loot_list_frame: ttk.LabelFrame | None = None
         self._paned: tk.PanedWindow | None = None
         self._custom_display_scale: float | None = None
+        self._loot_crop_offset: tuple[int, int] = (0, 0)
+        self._loot_hit_index = None
+        self._loot_hover: LootTableHoverController | None = None
 
         self.root.title("RotMG PPE Loot Tracker (Offline)")
         self.root.minsize(480, 360)
@@ -397,8 +424,26 @@ class MainWindow:
             variable=self.include_limited_var,
             command=self._on_variant_changed,
         ).grid(row=1, column=0, sticky="w")
+        hover_row = ttk.Frame(variant_frame)
+        hover_row.grid(row=2, column=0, sticky="w")
+        self.loot_table_hover_var = tk.BooleanVar(value=self.config.loot_table_hover_enabled)
+        self.loot_table_hover_condensed_var = tk.BooleanVar(
+            value=self.config.loot_table_hover_condensed,
+        )
+        ttk.Checkbutton(
+            hover_row,
+            text="Show hover details",
+            variable=self.loot_table_hover_var,
+            command=self._on_hover_toggle_changed,
+        ).grid(row=0, column=0, sticky="w")
+        ttk.Checkbutton(
+            hover_row,
+            text="Condensed",
+            variable=self.loot_table_hover_condensed_var,
+            command=self._on_hover_condensed_toggle_changed,
+        ).grid(row=0, column=1, sticky="w", padx=(12, 0))
         scale_row = ttk.Frame(variant_frame)
-        scale_row.grid(row=2, column=0, sticky="ew", pady=(6, 0))
+        scale_row.grid(row=3, column=0, sticky="ew", pady=(6, 0))
         ttk.Label(scale_row, text="Display scale").grid(row=0, column=0, sticky="w")
         self.display_scale_var = tk.StringVar(
             value=str(int(round(self.config.loot_table_display_scale * 100))),
@@ -417,7 +462,7 @@ class MainWindow:
         self.display_scale_spin.bind("<FocusOut>", self._on_display_scale_focus_out)
         self.display_scale_spin.bind("<Return>", self._on_display_scale_focus_out)
         view_btn_row = ttk.Frame(variant_frame)
-        view_btn_row.grid(row=3, column=0, sticky="ew", pady=(6, 0))
+        view_btn_row.grid(row=4, column=0, sticky="ew", pady=(6, 0))
         view_btn_row.columnconfigure(0, weight=1)
         view_btn_row.columnconfigure(1, weight=1)
         ttk.Button(view_btn_row, text="Refresh Image", command=self._refresh_loot_table_image).grid(
@@ -475,6 +520,15 @@ class MainWindow:
         self.canvas.configure(xscrollcommand=x_scroll.set, yscrollcommand=y_scroll.set)
         self.canvas.bind("<Enter>", self._bind_loot_table_mousewheel)
         self.canvas.bind("<Leave>", self._unbind_loot_table_mousewheel)
+        self._loot_hover = LootTableHoverController(
+            self.canvas,
+            config=self.config,
+            active_ppe=self._active_ppe,
+            display_scale=self._active_display_scale,
+            source_size=self._loot_table_source_size,
+            hover_enabled=lambda: self.loot_table_hover_var.get(),
+            hover_condensed=lambda: self.loot_table_hover_condensed_var.get(),
+        )
 
     @staticmethod
     def _widget_is_descendant(widget: tk.Misc, ancestor: tk.Misc) -> bool:
@@ -524,9 +578,11 @@ class MainWindow:
         ppe = self._active_ppe()
         if not ppe:
             self.loot_list.set_entries([])
-            return
-        entries = sorted(ppe.loot, key=lambda item: item.item_name.casefold())
-        self.loot_list.set_entries(entries)
+        else:
+            entries = sorted(ppe.loot, key=lambda item: item.item_name.casefold())
+            self.loot_list.set_entries(entries)
+        if self._loot_hover is not None:
+            self._loot_hover.invalidate()
 
     def _set_status(self, message: str) -> None:
         self.status_var.set(message)
@@ -741,6 +797,18 @@ class MainWindow:
         save_config(self.config)
         self._refresh_loot_table_image()
 
+    def _on_hover_toggle_changed(self) -> None:
+        self.config.loot_table_hover_enabled = self.loot_table_hover_var.get()
+        save_config(self.config)
+        if self._loot_hover is not None:
+            self._loot_hover.invalidate()
+
+    def _on_hover_condensed_toggle_changed(self) -> None:
+        self.config.loot_table_hover_condensed = self.loot_table_hover_condensed_var.get()
+        save_config(self.config)
+        if self._loot_hover is not None:
+            self._loot_hover.invalidate()
+
     def _parse_display_scale_percent(self, text: str) -> int:
         cleaned = text.strip().rstrip("%")
         try:
@@ -770,7 +838,16 @@ class MainWindow:
             self._update_canvas_image()
         self._set_status(f"Loot table display scale set to {percent}%.")
 
+    def _loot_table_source_size(self) -> tuple[int, int]:
+        if self._source_image is None:
+            return (0, 0)
+        return self._source_image.size
+
     def _clear_loot_table_image(self) -> None:
+        if self._loot_hover is not None:
+            self._loot_hover.set_hit_index(None, crop_offset=(0, 0))
+        self._loot_hit_index = None
+        self._loot_crop_offset = (0, 0)
         self.canvas.delete("all")
         self._photo = None
         self._display_size = (0, 0)
@@ -925,10 +1002,21 @@ class MainWindow:
             return
 
         self._custom_display_scale = None
-        prepared = _prepare_loot_table_image(result.image)
+        prepared, crop_offset = prepare_loot_table_image(result.image)
         if prepared is not result.image:
             result.image.close()
         self._source_image = prepared
+        self._loot_crop_offset = crop_offset
+        try:
+            self._loot_hit_index = build_sprite_hit_index(
+                include_skins=self.include_skins_var.get(),
+                include_limited=self.include_limited_var.get(),
+            )
+        except OSError as exc:
+            logger.warning("Could not build loot table hit index: %s", exc)
+            self._loot_hit_index = None
+        if self._loot_hover is not None:
+            self._loot_hover.set_hit_index(self._loot_hit_index, crop_offset=self._loot_crop_offset)
         self._update_canvas_image()
         self.root.after_idle(self._apply_loot_table_window_layout)
 
@@ -950,6 +1038,8 @@ class MainWindow:
             self._update_canvas_image()
 
     def _on_close(self) -> None:
+        if self._loot_hover is not None:
+            self._loot_hover.destroy()
         self.root.destroy()
 
     def _default_loot_table_export_name(self) -> str:

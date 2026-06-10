@@ -23,7 +23,10 @@ from app.core_adapter.loot_catalog import (
     supports_rarity_tiers,
 )
 from app.core_adapter.loot_service import add_loot, create_ppe, delete_ppe, remove_all_loot, remove_loot
-from app.ui.main_window import _prepare_loot_table_image
+from app.core_adapter.loot_renderer import SpriteCell, build_sprite_hit_index, entry_sprite_lookup_key
+from app.ui.loot_table_hover import build_tooltip_text, compute_tooltip_position
+from app.ui.main_window import _prepare_loot_table_image, prepare_loot_table_image
+from app.storage.models import LocalLootEntry
 from PIL import Image
 from app.storage.models import LocalPlayerData
 from app.storage.player_store import PlayerStore
@@ -70,6 +73,18 @@ class ConfigTests(unittest.TestCase):
         self.assertAlmostEqual(normalize_loot_table_display_scale(0.7), 0.7)
         self.assertAlmostEqual(normalize_loot_table_display_scale(2.0), 1.0)
         self.assertAlmostEqual(normalize_loot_table_display_scale(0.01), 0.05)
+
+    def test_loot_table_hover_enabled_load(self) -> None:
+        config = _config_from_raw({"loot_table_hover_enabled": False})
+        self.assertFalse(config.loot_table_hover_enabled)
+        default = _config_from_raw({})
+        self.assertTrue(default.loot_table_hover_enabled)
+
+    def test_loot_table_hover_condensed_load(self) -> None:
+        config = _config_from_raw({"loot_table_hover_condensed": True})
+        self.assertTrue(config.loot_table_hover_condensed)
+        default = _config_from_raw({})
+        self.assertFalse(default.loot_table_hover_condensed)
 
 
 class CatalogTests(unittest.TestCase):
@@ -292,6 +307,114 @@ class LootTableImagePrepTests(unittest.TestCase):
         prepared = _prepare_loot_table_image(img)
         self.assertLess(prepared.height, 200)
         self.assertGreater(prepared.height, 40)
+
+    def test_prepare_loot_table_image_tracks_crop_offset(self) -> None:
+        img = Image.new("RGBA", (120, 120), (0, 0, 0, 0))
+        for x in range(40):
+            for y in range(40):
+                img.putpixel((x + 20, y + 20), (200, 50, 50, 255))
+        prepared, offset = prepare_loot_table_image(img)
+        self.assertGreater(offset[0], 0)
+        self.assertGreater(offset[1], 0)
+        self.assertLess(prepared.width, img.width)
+
+
+class LootTableHoverTests(unittest.TestCase):
+    def test_sprite_hit_index_lookup(self) -> None:
+        index = build_sprite_hit_index()
+        cell = index.lookup(5, 5, crop_offset=(0, 0))
+        self.assertIsNotNone(cell)
+        assert cell is not None
+        self.assertEqual(cell.pixel_x, 0)
+        self.assertEqual(cell.pixel_y, 0)
+        self.assertIn("Dagger", cell.item_name)
+
+    def test_sprite_hit_index_respects_crop_offset(self) -> None:
+        index = build_sprite_hit_index()
+        at_origin = index.lookup(5, 5, crop_offset=(0, 0))
+        shifted = index.lookup(5, 5, crop_offset=(40, 40))
+        self.assertIsNotNone(at_origin)
+        self.assertIsNotNone(shifted)
+        assert at_origin is not None and shifted is not None
+        self.assertEqual(at_origin.pixel_x, 0)
+        self.assertEqual(shifted.pixel_x, 40)
+
+    def test_entry_sprite_lookup_key(self) -> None:
+        self.assertEqual(
+            entry_sprite_lookup_key("Demon Blade", shiny=True),
+            entry_sprite_lookup_key("Demon Blade", shiny=False) + " (shiny)",
+        )
+
+    def test_compute_tooltip_position_flips_near_bottom(self) -> None:
+        bounds = (0, 0, 1920, 1080)
+        width, height = 280, 200
+        x, y = compute_tooltip_position(
+            x_root=500,
+            y_root=1000,
+            width=width,
+            height=height,
+            bounds=bounds,
+        )
+        self.assertLess(y + height, bounds[3])
+        self.assertGreaterEqual(y, bounds[1])
+
+    def test_compute_tooltip_position_clamps_oversized_height(self) -> None:
+        bounds = (0, 0, 800, 600)
+        x, y = compute_tooltip_position(
+            x_root=100,
+            y_root=550,
+            width=200,
+            height=500,
+            bounds=bounds,
+        )
+        self.assertGreaterEqual(y, bounds[1])
+        self.assertLessEqual(y + 500, bounds[3])
+
+    def test_build_tooltip_text_logged_and_unlogged(self) -> None:
+        config = AppConfig()
+        cell = SpriteCell(
+            item_name="Dagger of Dire Hatred",
+            lookup_key=entry_sprite_lookup_key("Dagger of Dire Hatred", shiny=False),
+            pixel_x=0,
+            pixel_y=0,
+        )
+        _, unlogged = build_tooltip_text(cell, [], config=config)
+        self.assertIn("Not logged", "\n".join(unlogged))
+
+        entry = LocalLootEntry(
+            item_name="Dagger of Dire Hatred",
+            quantity=2,
+            shiny=False,
+            rarity="divine",
+            logged_times=[1_700_000_000, 1_700_000_100],
+        )
+        title, logged = build_tooltip_text(cell, [entry], config=config)
+        self.assertEqual(title, "Dagger of Dire Hatred")
+        body = "\n".join(logged)
+        self.assertIn("#1:", body)
+        self.assertIn("#2:", body)
+        self.assertIn("Subtotal:", body)
+
+    def test_build_tooltip_text_condensed(self) -> None:
+        config = AppConfig()
+        cell = SpriteCell(
+            item_name="Dagger of Dire Hatred",
+            lookup_key=entry_sprite_lookup_key("Dagger of Dire Hatred", shiny=False),
+            pixel_x=0,
+            pixel_y=0,
+        )
+        entry = LocalLootEntry(
+            item_name="Dagger of Dire Hatred",
+            quantity=2,
+            shiny=False,
+            rarity="divine",
+            logged_times=[1_700_000_000, 1_700_000_100],
+        )
+        _, condensed = build_tooltip_text(cell, [entry], config=config, condensed=True)
+        body = "\n".join(condensed)
+        self.assertIn("(+", body)
+        self.assertNotIn("#1:", body)
+        self.assertNotIn("Subtotal:", body)
 
 
 class PlayerStoreTests(unittest.TestCase):
