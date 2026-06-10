@@ -17,6 +17,7 @@ from app.config.settings import (
     save_config,
 )
 from app.core_adapter.loot_catalog import (
+    get_known_items_set,
     has_shiny_variant,
     is_equipment,
     is_shiny_only_item,
@@ -26,6 +27,7 @@ from app.core_adapter.loot_catalog import (
 from app.core_adapter.repo_paths import app_icon_path
 from app.paths import data_dir
 from app.ui.item_autocomplete import ItemAutocomplete
+from app.ui.item_sprite import load_item_sprite_image
 from app.ui.loot_list_view import LootListView
 from app.ui.rarity_selector import RaritySelector
 from app.core_adapter.loot_renderer import build_sprite_hit_index, render_loot_table
@@ -50,6 +52,7 @@ _DEFAULT_IMAGE_DISPLAY_SCALE = DEFAULT_LOOT_TABLE_DISPLAY_SCALE
 _DISPLAY_SCALE_PERCENT_MIN = 5
 _DISPLAY_SCALE_PERCENT_MAX = 100
 _LEFT_PANEL_MIN_WIDTH = 260
+_ITEM_PREVIEW_SIZE = 48
 _LEFT_PANEL_FRAME_PADDING = 2
 _LABEL_FRAME_PADDING = 6
 _SCROLLBAR_THICKNESS = 18
@@ -219,6 +222,15 @@ def _prepare_loot_table_image(image: Image.Image) -> Image.Image:
     return prepared
 
 
+def _tk_bg_to_rgb(widget: tk.Misc, color: str) -> tuple[int, int, int]:
+    """Resolve a Tk color name (including system colors) to 8-bit RGB for PIL."""
+    try:
+        red, green, blue = widget.winfo_rgb(color)
+        return (red >> 8, green >> 8, blue >> 8)
+    except tk.TclError:
+        return (240, 240, 240)
+
+
 def _tk_photoimage(image: Image.Image, *, master: tk.Misc) -> ImageTk.PhotoImage:
     """Build a PhotoImage quickly (Tk is very slow for large RGBA bitmaps)."""
     if image.mode == "RGBA":
@@ -382,6 +394,8 @@ class MainWindow:
         entry_frame.columnconfigure(0, weight=1)
 
         ttk.Label(entry_frame, text="Item").grid(row=0, column=0, sticky="w")
+        ttk.Label(entry_frame, text="Preview").grid(row=0, column=1, sticky="w", padx=(8, 0))
+
         self.item_var = tk.StringVar()
         self.item_entry = ItemAutocomplete(
             entry_frame,
@@ -389,6 +403,27 @@ class MainWindow:
             on_change=self._update_item_entry_state,
         )
         self.item_entry.grid(row=1, column=0, sticky="ew")
+
+        preview_bg = (
+            ttk.Style(entry_frame).lookup("TLabel", "background")
+            or ttk.Style(entry_frame).lookup("TFrame", "background")
+            or "#f0f0f0"
+        )
+        placeholder = Image.new(
+            "RGB",
+            (_ITEM_PREVIEW_SIZE, _ITEM_PREVIEW_SIZE),
+            _tk_bg_to_rgb(entry_frame, preview_bg),
+        )
+        self._item_preview_placeholder = ImageTk.PhotoImage(placeholder, master=entry_frame)
+        self._item_preview_photo: ImageTk.PhotoImage | None = None
+        self._item_preview_label = tk.Label(
+            entry_frame,
+            image=self._item_preview_placeholder,
+            bg=preview_bg,
+            borderwidth=1,
+            relief=tk.SUNKEN,
+        )
+        self._item_preview_label.grid(row=1, column=1, rowspan=2, padx=(8, 0), sticky="n")
 
         self.shiny_var = tk.BooleanVar(value=False)
         self.shiny_check = ttk.Checkbutton(
@@ -399,13 +434,18 @@ class MainWindow:
         )
         self.shiny_check.grid(row=2, column=0, sticky="w", pady=(6, 0))
 
-        ttk.Label(entry_frame, text="Rarity (equipment only)").grid(row=3, column=0, sticky="w", pady=(6, 0))
+        ttk.Label(entry_frame, text="Rarity (equipment only)").grid(
+            row=3, column=0, columnspan=2, sticky="w", pady=(6, 0),
+        )
         self.rarity_var = tk.StringVar(value="common")
         self.rarity_selector = RaritySelector(entry_frame, variable=self.rarity_var)
-        self.rarity_selector.grid(row=4, column=0, sticky="w", pady=(4, 0))
+        self.rarity_selector.grid(row=4, column=0, columnspan=2, sticky="w", pady=(4, 0))
+        self.rarity_var.trace_add("write", lambda *_: self._update_item_preview())
         self._update_item_entry_state()
 
-        ttk.Button(entry_frame, text="Add Item", command=self._add_item).grid(row=5, column=0, sticky="ew", pady=(8, 0))
+        ttk.Button(entry_frame, text="Add Item", command=self._add_item).grid(
+            row=5, column=0, columnspan=2, sticky="ew", pady=(8, 0),
+        )
 
         variant_frame = ttk.LabelFrame(parent, text="Loot Table View", padding=_LABEL_FRAME_PADDING)
         variant_frame.grid(row=2, column=0, sticky="ew", pady=(8, 0))
@@ -684,6 +724,32 @@ class MainWindow:
             self.rarity_var.set("common")
             self.rarity_selector.set_allowed_rarities(None)
             self.rarity_selector.set_enabled(False)
+
+        self._update_item_preview()
+
+    def _clear_item_preview(self) -> None:
+        self._item_preview_photo = None
+        self._item_preview_label.configure(image=self._item_preview_placeholder)
+
+    def _update_item_preview(self) -> None:
+        item = self.item_var.get().strip()
+        known = get_known_items_set()
+        if not item or (item not in known and not is_shiny_only_item(item)):
+            self._clear_item_preview()
+            return
+
+        sprite = load_item_sprite_image(
+            item,
+            shiny=self.shiny_var.get(),
+            rarity=self.rarity_var.get(),
+            size=_ITEM_PREVIEW_SIZE,
+        )
+        if sprite is None:
+            self._clear_item_preview()
+            return
+
+        self._item_preview_photo = ImageTk.PhotoImage(sprite, master=self._item_preview_label)
+        self._item_preview_label.configure(image=self._item_preview_photo)
 
     def _selected_loot_entry(self) -> LocalLootEntry | None:
         ppe = self._active_ppe()

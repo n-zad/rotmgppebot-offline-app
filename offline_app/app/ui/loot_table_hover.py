@@ -13,12 +13,12 @@ from PIL import Image, ImageTk
 
 from app.config.settings import AppConfig
 from app.core_adapter.loot_renderer import SpriteCell, SpriteHitIndex, entry_sprite_lookup_key
+from app.ui.item_sprite import load_item_sprite_image
 from app.core_adapter.loot_service import format_loot_label
 from app.core_adapter.points_adapter import (
     entry_index_for_loot_entry,
     loot_drop_points_by_entry_index,
 )
-from app.core_adapter.repo_paths import ensure_repo_imports
 from app.storage.models import LocalLootEntry, LocalPPE
 
 if TYPE_CHECKING:
@@ -154,29 +154,6 @@ def build_tooltip_text(
     if len(entries) > 1:
         body.append(f"Total: {_format_points(grand_total)} pts")
     return title, body
-
-
-def _load_item_sprite(item_name: str, *, shiny: bool) -> Image.Image | None:
-    ensure_repo_imports()
-    from utils.image_utils import resolve_item_image_path
-
-    base_name = item_name
-    if base_name.endswith(" (shiny)"):
-        base_name = base_name[: -len(" (shiny)")]
-
-    sprite_path = resolve_item_image_path(base_name, shiny)
-    if not sprite_path:
-        return None
-    try:
-        with Image.open(sprite_path) as img:
-            if img.mode != "RGBA":
-                img = img.convert("RGBA")
-            if img.size != (_SPRITE_DISPLAY_SIZE, _SPRITE_DISPLAY_SIZE):
-                img = img.resize((_SPRITE_DISPLAY_SIZE, _SPRITE_DISPLAY_SIZE), Image.Resampling.LANCZOS)
-            return img.copy()
-    except OSError as exc:
-        logger.debug("Could not load sprite for %s: %s", item_name, exc)
-        return None
 
 
 class LootTableTooltip:
@@ -410,7 +387,7 @@ class LootTableHoverController:
         )
 
         shiny = cell.lookup_key.endswith(" (shiny)")
-        sprite = _load_item_sprite(cell.item_name, shiny=shiny)
+        sprite = load_item_sprite_image(cell.item_name, shiny=shiny, size=_SPRITE_DISPLAY_SIZE)
         self._tooltip.show(
             x_root=event.x_root,
             y_root=event.y_root,

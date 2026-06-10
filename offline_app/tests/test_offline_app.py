@@ -24,6 +24,7 @@ from app.core_adapter.loot_catalog import (
 )
 from app.core_adapter.loot_service import add_loot, create_ppe, delete_ppe, remove_all_loot, remove_loot
 from app.core_adapter.loot_renderer import SpriteCell, build_sprite_hit_index, entry_sprite_lookup_key
+from app.ui.item_sprite import load_item_sprite_image
 from app.ui.loot_table_hover import build_tooltip_text, compute_tooltip_position
 from app.ui.main_window import _prepare_loot_table_image, prepare_loot_table_image
 from app.storage.models import LocalLootEntry, LocalPPE, LocalPlayerData
@@ -441,6 +442,17 @@ class LootTableHoverTests(unittest.TestCase):
         self.assertIn("(+", body)
         self.assertNotIn("#1:", body)
         self.assertNotIn("Subtotal:", body)
+
+
+class ItemSpriteTests(unittest.TestCase):
+    def test_load_item_sprite_image_known_item(self) -> None:
+        sprite = load_item_sprite_image("Dagger of Dire Hatred", shiny=False, rarity="divine")
+        self.assertIsNotNone(sprite)
+        assert sprite is not None
+        self.assertEqual(sprite.size, (40, 40))
+
+    def test_load_item_sprite_image_unknown_item(self) -> None:
+        self.assertIsNone(load_item_sprite_image("Not A Real Item", shiny=False))
 
 
 class PlayerStoreTests(unittest.TestCase):
