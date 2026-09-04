@@ -17,7 +17,7 @@ async def command(interaction: discord.Interaction, user: discord.Member, id: in
         return await interaction.response.send_message("❌ This command can only be used in a server.")
     
     try:
-        validate_loot_input(item_name, shiny=shiny, known_items=LOOT)
+        item_name = validate_loot_input(item_name, shiny=shiny, known_items=LOOT)
     except ValueError as e:
         return await interaction.response.send_message(str(e), ephemeral=True)
     
@@ -67,7 +67,11 @@ async def command(interaction: discord.Interaction, user: discord.Member, id: in
             overlay_path = overlay_rarity_badge(image_path, rarity_normalized)
             response_file = discord.File(overlay_path or image_path)
 
-        await interaction.response.send_message(format_ppe_add_message(result), file=response_file)
+        response_content = format_ppe_add_message(result)
+        if response_file is not None:
+            await interaction.response.send_message(response_content, file=response_file)
+        else:
+            await interaction.response.send_message(response_content)
         await send_ppe_markdown_followup(interaction, ppe=result.ppe, ephemeral=True)
         await interaction.followup.send(
             content=f"{user.display_name}'s PPE #{result.ppe.id} now has **{result.ppe.points} total points**.",

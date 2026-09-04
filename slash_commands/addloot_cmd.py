@@ -19,7 +19,7 @@ async def command(
     rarity: str = "common",
     ):
     try:
-        validate_loot_input(item_name, shiny=shiny, known_items=LOOT)
+        item_name = validate_loot_input(item_name, shiny=shiny, known_items=LOOT)
     except ValueError as e:
         return await interaction.response.send_message(str(e), ephemeral=True)
     
@@ -50,7 +50,10 @@ async def command(
         standardized = format_ppe_add_message(result)
 
         try:
-            await interaction.response.send_message(standardized, file=image_file, ephemeral=False)
+            if image_file is not None:
+                await interaction.response.send_message(standardized, file=image_file, ephemeral=False)
+            else:
+                await interaction.response.send_message(standardized, ephemeral=False)
             await send_ppe_markdown_followup(interaction, ppe=result.ppe, ephemeral=True)
         finally:
             if overlay_path and image_path and overlay_path != image_path and os.path.exists(overlay_path):
