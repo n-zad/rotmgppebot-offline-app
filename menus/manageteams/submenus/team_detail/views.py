@@ -7,6 +7,7 @@ import discord
 from dataclass import TeamData
 from menus.leaderboard.common import LEADERBOARD_PAGE_SIZE, build_ranked_entry_lines
 from menus.menu_utils import OwnerBoundView
+from menus.menu_utils.team_loot_image import add_team_loot_image_buttons
 from menus.manageteams.common import resolve_team_name
 from menus.manageteams.modals import (
     AddMemberModal,
@@ -232,6 +233,7 @@ class TeamInfoPreviewView(OwnerBoundView):
         if len(self.embeds) <= 1:
             self.remove_item(self.prev_page)
             self.remove_item(self.next_page)
+        add_team_loot_image_buttons(self, team_name=team_name, row=2, command_name="/manageteams")
 
     @discord.ui.button(label="Prev", style=discord.ButtonStyle.secondary, row=0)
     async def prev_page(self, interaction: discord.Interaction, _button: discord.ui.Button) -> None:
